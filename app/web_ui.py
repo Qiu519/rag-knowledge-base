@@ -15,10 +15,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import gradio as gr
+# config 必须先于 gradio 导入：HF_ENDPOINT / HF_HOME / NO_PROXY 等环境变量
+# 要在 huggingface_hub 首次读取之前生效。gradio 会连带 import huggingface_hub，
+# 顺序反了模型加载会直连 huggingface.co（国内不通），5 轮超时重试浪费一两分钟。
+from src.config import CONFIG  # noqa: E402
 
-from src.config import CONFIG
-from src.pipeline import RAGPipeline
+import gradio as gr  # noqa: E402
+
+from src.pipeline import RAGPipeline  # noqa: E402
 
 PIPELINE: RAGPipeline | None = None
 
