@@ -1,0 +1,31 @@
+# ===== 敏感信息 =====
+.env
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# ===== 模型 / 数据缓存（体积大，不进 git）=====
+.hf-home/
+.wheels/
+.pip-cache/
+data/processed/index/
+*.faiss
+
+# ===== 运行产物 =====
+data/processed/*.jsonl
+logs/
+*.log
+# outputs 目录整体忽略，但实验数据与图表是简历证据，强制纳入版本库
+outputs/*
+!outputs/results.csv
+!outputs/*.png
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

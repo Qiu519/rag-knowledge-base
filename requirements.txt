@@ -1,0 +1,37 @@
+# ============================================================
+# 依赖清单（Python 3.11 / conda 环境 rag）
+#
+# 注意：torch 的 GPU 版不走本文件安装（PyPI 上的 Windows 版是 CPU-only），
+# 请按 docs/开发手册.md 的说明从镜像单独安装：
+#   pip install .wheels/torch-2.5.1+cu121-cp311-cp311-win_amd64.whl
+# ============================================================
+
+# ---- 向量模型 / 推理 ----
+sentence-transformers==3.3.1
+transformers==4.46.3
+
+# ---- 向量检索 ----
+faiss-cpu>=1.10          # 1.8.0 与 numpy>=2 不兼容；1.10+ 支持 numpy 2
+
+# ---- 混合检索（BM25）----
+rank-bm25==0.2.2
+jieba==0.42.1             # 中文分词，BM25 的 tokenization 依赖
+
+# ---- 文档解析 ----
+pypdf==5.1.0
+
+# ---- LLM 接口 ----
+openai>=1.50.0            # OpenAI 兼容客户端（DeepSeek/硅基流动/Ollama 通用）
+python-dotenv==1.0.1
+
+# ---- Web 界面 ----
+gradio>=4.44,<6
+
+# ---- 实验与评估 ----
+pandas>=2.2
+matplotlib>=3.9
+tqdm>=4.66
+numpy>=1.26,<3
+
+# ---- 测试 ----
+pytest>=8.0
