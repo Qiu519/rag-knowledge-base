@@ -23,6 +23,20 @@ from src.embedder import Embedder
 from src.vector_store import VectorStore
 
 
+def chunk_repr(meta: dict) -> str:
+    """块的“检索表示”：正文前拼上所属标题。
+
+    为什么：分块按标题切段后，纯正文块可能完全不含主题词——例如
+    “二、基本申请条件”一节的正文是编号列表，通篇没有“申请条件/保研”
+    字样，向量与重排都无法把它和“保研要求”类问题关联（实测踩坑）。
+    拼上标题后语义完整，这是上下文增强分块（contextual chunk）的标准做法。
+    注意：该表示只用于 embedding / BM25 / 重排打分；喂给 LLM 的上下文
+    仍用干净正文（见 llm.build_context），避免重复噪音。
+    """
+    heading = meta.get("heading") or ""
+    return f"{heading}\n{meta['text']}" if heading else meta["text"]
+
+
 def _tokenize_zh(text: str) -> list[str]:
     """中文分词 + 轻量停用词过滤（BM25 的索引单元）。
 
@@ -46,7 +60,7 @@ class HybridRetriever:
         self.embedder = embedder
         self.cfg = cfg or CONFIG.retrieval
 
-        texts = [m["text"] for m in store.metas]
+        texts = [chunk_repr(m) for m in store.metas]
         tokenized = [_tokenize_zh(t) for t in texts]
         # BM25Okapi 不接受空文档，兜底插入占位符
         tokenized = [toks if toks else ["空"] for toks in tokenized]
@@ -93,7 +107,12 @@ class HybridRetriever:
     @classmethod
     def from_chunks(cls, chunks: list[Chunk], embedder: Embedder,
                     cfg: RetrievalConfig | None = None) -> "HybridRetriever":
-        """从块列表构建（入库流程用）。"""
+        """从块列表构建（入库流程用）。
+
+        向量编码用“标题+正文”的检索表示（见 chunk_repr），与检索/
+        重排口径一致，保证“同一文本怎么编码就怎么比对”。
+        """
         store = VectorStore(embedder.dim)
-        store.add(chunks, embedder.encode_corpus([c.text for c in chunks]))
+        store.add(chunks, embedder.encode_corpus(
+            [chunk_repr({"heading": c.heading, "text": c.text}) for c in chunks]))
         return cls(store, embedder, cfg)

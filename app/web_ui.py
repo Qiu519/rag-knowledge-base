@@ -57,9 +57,13 @@ def answer_question(question: str, top_k: int, use_rerank: bool,
         cite_rows.append(f"[{i}]\t{c['source']}\t{heading}\t{score:.3f}\t{snippet}")
 
     t = result.timings_ms
-    timing = (f"检索 **{t.get('retrieval_ms')}ms** · 重排 **{t.get('rerank_ms')}ms** · "
-              f"生成 **{t.get('generate_ms')}ms** · 总计 **{t.get('total_ms')}ms** · 模式 `{result.mode}`")
-    return result.answer, "\n".join(cite_rows), timing
+    timing = (f"改写 **{t.get('rewrite_ms')}ms** · 检索 **{t.get('retrieval_ms')}ms** · "
+              f"重排 **{t.get('rerank_ms')}ms** · 生成 **{t.get('generate_ms')}ms** · "
+              f"总计 **{t.get('total_ms')}ms** · 模式 `{result.mode}`")
+    shown = result.answer
+    if result.rewritten_query:
+        shown = f"> 🔍 口语问题已改写为规范表述后检索：**{result.rewritten_query}**\n\n{shown}"
+    return shown, "\n".join(cite_rows), timing
 
 
 def rebuild_index(files: list[str]) -> str:

@@ -43,7 +43,9 @@ class Reranker:
         """
         if not candidates:
             return []
-        pairs = [(query, c["text"]) for c in candidates]
+        # 打分同样使用“标题+正文”的检索表示，与向量编码口径一致
+        from src.retriever import chunk_repr
+        pairs = [(query, chunk_repr(c)) for c in candidates]
         scores = self.model.predict(pairs, batch_size=16)
         ranked = sorted(
             ({**c, "rerank_score": float(s)} for c, s in zip(candidates, scores)),

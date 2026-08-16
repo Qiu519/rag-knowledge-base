@@ -38,6 +38,7 @@ class QueryResult:
     answer: str
     contexts: list[dict]          # 最终送入 LLM 的片段（含分数与来源）
     mode: str                     # api / extractive
+    rewritten_query: str = ""     # 检索用的改写后查询（与原问题相同时为空串）
     timings_ms: dict = field(default_factory=dict)  # 各阶段耗时
 
     @property
@@ -112,22 +113,30 @@ class RAGPipeline:
         return self
 
     def query(self, question: str, top_k: int | None = None) -> QueryResult:
-        """端到端问答。"""
+        """端到端问答。
+
+        检索前先做查询改写（口语→规范术语）：用户说“保研”，制度文件写
+        “推荐免试研究生”，字面零重叠会同时削弱 BM25 与重排。改写后的
+        查询只用于检索，生成回答时仍回答用户的原始问题。
+        """
         if self.retriever is None:
             raise RuntimeError("管线未加载，请先调用 load() 或 ingest()")
 
+        self.llm = self.llm or LLMClient()
+        t_rewrite = time.perf_counter()
+        search_query, rewritten_ok = self.llm.rewrite_query(question)
         t_retrieval = time.perf_counter()
-        candidates = self.retriever.search(question, k=self.cfg.retrieval.dense_k
+        candidates = self.retriever.search(search_query,
+                                           k=self.cfg.retrieval.dense_k
                                            if self.cfg.retrieval.use_rerank else top_k)
         t_rerank = time.perf_counter()
         # 有重排器时：召回多取候选，重排后截断到 top_k；否则直接截断
         if self.reranker is not None:
-            candidates = self.reranker.rerank(question, candidates,
+            candidates = self.reranker.rerank(search_query, candidates,
                                               top_k or self.cfg.retrieval.final_k)
         elif top_k:
             candidates = candidates[:top_k]
         t_generate = time.perf_counter()
-        self.llm = self.llm or LLMClient()
         answer, gen_sec = self.llm.answer(question, candidates)
         t_end = time.perf_counter()
 
@@ -136,10 +145,12 @@ class RAGPipeline:
             answer=answer,
             contexts=candidates,
             mode=self.llm.mode,
+            rewritten_query=search_query if (rewritten_ok and search_query != question) else "",
             timings_ms={
+                "rewrite_ms": round((t_retrieval - t_rewrite) * 1000, 1),
                 "retrieval_ms": round((t_rerank - t_retrieval) * 1000, 1),
                 "rerank_ms": round((t_generate - t_rerank) * 1000, 1),
                 "generate_ms": round(gen_sec * 1000, 1),
-                "total_ms": round((t_end - t_retrieval) * 1000, 1),
+                "total_ms": round((t_end - t_rewrite) * 1000, 1),
             },
         )

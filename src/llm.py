@@ -29,6 +29,16 @@ SYSTEM_PROMPT = (
     "不要猜测或编造。"
 )
 
+# 查询改写的系统提示（见 LLMClient.rewrite_query）
+REWRITE_SYSTEM = (
+    "你是检索系统的查询改写助手。把用户的口语化问题改写为更适合文档检索的规范表述：\n"
+    "1. 保留问题原意，把口语或俗称替换成正式术语（例如“留级”应改写为制度文件中的"
+    "正式表述“编入下一年级”）；\n"
+    "2. 补全省略的主语与语境，让问题独立可理解；\n"
+    "3. 只输出改写后的问题本身，不要解释，不要加引号。\n"
+    "问题已经清晰规范时，原样输出。"
+)
+
 
 def build_context(candidates: list[dict]) -> str:
     """把检索结果拼装成带编号的上下文文本。"""
@@ -62,18 +72,39 @@ class LLMClient:
 
     # ---- API 模式 ----
 
-    def _chat(self, system: str, user: str) -> str:
+    def _chat(self, system: str, user: str, max_tokens: int | None = None) -> str:
         resp = self._client.chat.completions.create(
             model=self.cfg.model,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}],
             temperature=self.cfg.temperature,
-            max_tokens=self.cfg.max_tokens,
+            max_tokens=max_tokens or self.cfg.max_tokens,
             # 思考开关仅对思考型模型生效（DashScope qwen3 系约定字段），
             # 非思考型模型会忽略，无副作用
             extra_body={"enable_thinking": self.cfg.enable_thinking},
         )
         return resp.choices[0].message.content or ""
+
+    def rewrite_query(self, query: str) -> tuple[str, bool]:
+        """查询改写：口语问题 → 检索友好的规范表述。
+
+        解决的问题：用户说“留级”，制度文件写“编入下一年级”——
+        BM25 对同义词零命中，向量相似度也偏弱，导致检索失焦。
+        改写后拿规范术语去检索，生成时仍回答用户的原始问题。
+
+        返回 (改写后查询, 是否成功)。任何失败都优雅降级为原查询，
+        检索链路不因改写服务故障而不可用。
+        """
+        if not self._client:
+            return query, False  # 抽取式模式无 LLM 可用，直接原样检索
+        try:
+            out = self._chat(REWRITE_SYSTEM, query, max_tokens=128).strip()
+            # 模型偶尔会画蛇添足加引号或前缀，剥掉常见包装
+            out = out.strip("“”\"' \n")
+            return (out or query), True
+        except Exception as exc:  # 网络/限流等，不让改写失败拖垮问答
+            print(f"[llm] 查询改写失败，使用原问题检索：{exc}")
+            return query, False
 
     # ---- 抽取式模式 ----
 

@@ -19,6 +19,8 @@ def print_result(result) -> None:
     """终端友好输出：答案 + 引用来源 + 各阶段耗时。"""
     bar = "=" * 64
     print(f"\n{bar}\n问题：{result.question}\n{bar}")
+    if result.rewritten_query:
+        print(f"检索改写：{result.rewritten_query}")
     print(result.answer)
     print(f"\n--- 引用片段（{len(result.contexts)} 条）---")
     for i, c in enumerate(result.contexts, start=1):

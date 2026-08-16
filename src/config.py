@@ -90,7 +90,8 @@ class RetrievalConfig:
 
     dense_k: int = 20
     bm25_k: int = 20
-    final_k: int = 5
+    final_k: int = 7   # 送入生成的片段数。5 会漏掉"差一名"的关键块（实测案例：
+                       # 保研问题下"基本申请条件"块常排第 6），7 能覆盖且 token 成本可控
     use_hybrid: bool = True
     use_rerank: bool = True
     rrf_k: int = 60
