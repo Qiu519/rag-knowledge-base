@@ -125,6 +125,12 @@ class LLMConfig:
     model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", ""))
     temperature: float = 0.3  # 事实型问答要“稳”，温度调低
     max_tokens: int = 1024
+    # 思考型模型（如 qwen3.7-max）的推理开关：RAG 场景上下文已给足依据，
+    # 关闭思考可把生成耗时从约 6-12s 压到 1-2s，事实型回答质量几乎无损；
+    # 复杂推理题可在 .env 里设 LLM_ENABLE_THINKING=true。
+    # 默认 false：对非思考型模型该字段会被忽略，无副作用。
+    enable_thinking: bool = field(default_factory=lambda: (
+        os.getenv("LLM_ENABLE_THINKING", "false").lower() in {"1", "true", "yes"}))
 
     @property
     def api_ready(self) -> bool:

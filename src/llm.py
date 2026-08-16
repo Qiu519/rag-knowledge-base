@@ -69,6 +69,9 @@ class LLMClient:
                       {"role": "user", "content": user}],
             temperature=self.cfg.temperature,
             max_tokens=self.cfg.max_tokens,
+            # 思考开关仅对思考型模型生效（DashScope qwen3 系约定字段），
+            # 非思考型模型会忽略，无副作用
+            extra_body={"enable_thinking": self.cfg.enable_thinking},
         )
         return resp.choices[0].message.content or ""
 
