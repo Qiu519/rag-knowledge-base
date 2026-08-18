@@ -154,3 +154,6 @@ class RAGPipeline:
                 "total_ms": round((t_end - t_rewrite) * 1000, 1),
             },
         )
+
+    # 表格结构化查询旁路（v0.4.0 起的 csv/xlsx 统计）已移除，系统回到纯文档问答 RAG 核心。
+

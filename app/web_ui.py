@@ -1,13 +1,38 @@
-"""Gradio Web 界面 —— 演示与体验入口。
+"""Gradio Web 界面 —— 文档问答入口。
 
-布局：
-    左侧  参数面板（top-k / 重排开关 / 混合检索开关 / 上传文档重建索引）
-    右侧  问答区（答案 Markdown + 引用片段表格 + 各阶段耗时）
+布局（单页签）：
+    文档问答：参数面板（top-k / 重排 / 混合检索 / 上传 md|txt|pdf 重建索引）
+             + 问答区（答案 Markdown + 引用片段 + 各阶段耗时）
 
 启动：python app/web_ui.py   然后浏览器打开 http://127.0.0.1:7860
+（浏览器自动弹出由「启动知识库问答.bat」负责；web_ui 本身 inbrowser=False，
+ 避免 Gradio 在 start /min 的最小化子进程里调 webbrowser 静默失败。）
 """
 
 from __future__ import annotations
+
+# --- 隐藏启动的日志兜底 ---
+# pythonw.exe 没有控制台：sys.stdout / sys.stderr 为 None。
+# 且 cmd 的 "start ... > log 2>&1" 外层重定向对 pythonw 不生效（日志落不了盘，
+# 还会让 start 在某些环境下弹 "Windows 找不到 '\\\\' 文件" 对话框）。
+# 这里在 Python 进程内把 stdout/stderr 重定向到 outputs/server.log，便于排障。
+import datetime as _dt
+import sys as _sys
+from pathlib import Path as _Path
+if _sys.stdout is None or _sys.stderr is None:
+    _log_path = _Path(__file__).resolve().parent.parent / "outputs" / "server.log"
+    _log_path.parent.mkdir(parents=True, exist_ok=True)
+    # 截断式（"w"）写入：每次启动清空旧日志，避免旧错误干扰新启动的诊断
+    _log_fh = open(_log_path, "w", encoding="utf-8", buffering=1)
+    if _sys.stdout is None:
+        _sys.stdout = _log_fh
+    if _sys.stderr is None:
+        _sys.stderr = _log_fh
+    print(
+        f"=== server.log opened {_dt.datetime.now().isoformat(timespec='seconds')} "
+        f"(pythonw mode, stdout/stderr redirected) ===",
+        flush=True,
+    )
 
 import shutil
 import sys
@@ -18,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # config 必须先于 gradio 导入：HF_ENDPOINT / HF_HOME / NO_PROXY 等环境变量
 # 要在 huggingface_hub 首次读取之前生效。gradio 会连带 import huggingface_hub，
 # 顺序反了模型加载会直连 huggingface.co（国内不通），5 轮超时重试浪费一两分钟。
-from src.config import CONFIG  # noqa: E402
+from src.config import CONFIG, PROJECT_VERSION  # noqa: E402
 
 import gradio as gr  # noqa: E402
 
@@ -35,6 +60,9 @@ def get_pipeline() -> RAGPipeline:
     return PIPELINE
 
 
+# ---------------------------------------------------------------------------
+# 文档问答
+# ---------------------------------------------------------------------------
 def answer_question(question: str, top_k: int, use_rerank: bool,
                     use_hybrid: bool) -> tuple[str, str, str]:
     """问答回调：返回 (答案Markdown, 引用表格CSV串, 耗时说明)。"""
@@ -78,39 +106,51 @@ def rebuild_index(files: list[str]) -> str:
     return f"已入库 {len(files)} 个文件，当前索引共 {n} 块。"
 
 
+# ---------------------------------------------------------------------------
+# 界面组装
+# ---------------------------------------------------------------------------
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="本地知识库问答系统") as demo:
+    with gr.Blocks(title=f"本地知识库问答系统 {PROJECT_VERSION}") as demo:
         gr.Markdown(
-            "# 📚 本地知识库问答（RAG）\n"
-            "基于本地 GPU 的中文文档问答：混合检索 + 重排 + 大模型生成，"
-            "答案附引用来源。语料放在 `data/raw/`，界面左侧可上传补充。")
-        with gr.Row():
-            with gr.Column(scale=1):
-                top_k = gr.Slider(1, 10, value=CONFIG.retrieval.final_k, step=1,
-                                  label="返回片段数 top-k")
-                use_rerank = gr.Checkbox(value=CONFIG.retrieval.use_rerank, label="启用重排（bge-reranker）")
-                use_hybrid = gr.Checkbox(value=CONFIG.retrieval.use_hybrid, label="混合检索（BM25+向量）")
-                gr.Markdown("### 📄 上传文档（md/txt/pdf）")
-                uploader = gr.File(file_count="multiple",
-                                   file_types=[".md", ".txt", ".pdf"])
-                rebuild_btn = gr.Button("重建索引")
-                rebuild_status = gr.Markdown()
-                rebuild_btn.click(rebuild_index, inputs=uploader, outputs=rebuild_status)
-            with gr.Column(scale=2):
-                question = gr.Textbox(label="问题", placeholder="例如：保研对绩点有什么要求？",
-                                      lines=2)
-                ask_btn = gr.Button("提问", variant="primary")
-                answer_md = gr.Markdown(label="回答")
-                timing_md = gr.Markdown()
-                cites = gr.Textbox(label="引用片段", lines=10)
-                ask_btn.click(answer_question,
-                              inputs=[question, top_k, use_rerank, use_hybrid],
-                              outputs=[answer_md, cites, timing_md])
-                question.submit(answer_question,
-                                inputs=[question, top_k, use_rerank, use_hybrid],
-                                outputs=[answer_md, cites, timing_md])
+            f"# 📚 本地知识库问答（RAG） {PROJECT_VERSION}\n"
+            "基于本地 GPU 的中文文档问答：混合检索 + 重排 + 大模型生成，答案带引用。")
+
+        with gr.Tabs():
+            # ===================== 文档问答 =====================
+            with gr.Tab("📄 文档问答"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        top_k = gr.Slider(1, 10, value=CONFIG.retrieval.final_k, step=1,
+                                          label="返回片段数 top-k")
+                        use_rerank = gr.Checkbox(value=CONFIG.retrieval.use_rerank,
+                                                 label="启用重排（bge-reranker）")
+                        use_hybrid = gr.Checkbox(value=CONFIG.retrieval.use_hybrid,
+                                                 label="混合检索（BM25+向量）")
+                        gr.Markdown("### 📄 上传文档（md/txt/pdf）")
+                        uploader = gr.File(file_count="multiple",
+                                           file_types=[".md", ".txt", ".pdf"])
+                        rebuild_btn = gr.Button("重建索引")
+                        rebuild_status = gr.Markdown()
+                        rebuild_btn.click(rebuild_index, inputs=uploader,
+                                         outputs=rebuild_status)
+                    with gr.Column(scale=2):
+                        question = gr.Textbox(label="问题",
+                                              placeholder="例如：保研对绩点有什么要求？",
+                                              lines=2)
+                        ask_btn = gr.Button("提问", variant="primary")
+                        answer_md = gr.Markdown(label="回答")
+                        timing_md = gr.Markdown()
+                        cites = gr.Textbox(label="引用片段", lines=10)
+                        ask_btn.click(answer_question,
+                                      inputs=[question, top_k, use_rerank, use_hybrid],
+                                      outputs=[answer_md, cites, timing_md])
+                        question.submit(answer_question,
+                                        inputs=[question, top_k, use_rerank, use_hybrid],
+                                        outputs=[answer_md, cites, timing_md])
     return demo
 
 
 if __name__ == "__main__":
-    build_ui().queue().launch(server_name="127.0.0.1", server_port=7860, inbrowser=True)
+    # inbrowser 交由启动脚本负责（在交互桌面会话里弹浏览器更稳，
+    # 避免 Gradio 在 start /min 的最小化子进程里调 webbrowser 静默失败）。
+    build_ui().queue().launch(server_name="127.0.0.1", server_port=7860, inbrowser=False)

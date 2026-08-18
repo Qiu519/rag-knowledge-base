@@ -153,5 +153,9 @@ class AppConfig:
         self.paths.ensure()
 
 
+# 版本标识（开发日志见 docs/开发手册.md §8）。界面与文档统一引用，便于辨识当前能力。
+# v0.4.0–v0.4.9 的表格统计旁路已移除，系统回到纯文档问答 RAG 核心（基线 v0.3.0）。
+PROJECT_VERSION = "v0.3.0"
+
 # 全局单例：整个项目共享一份配置
 CONFIG = AppConfig()
